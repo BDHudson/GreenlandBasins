@@ -54,7 +54,6 @@ thickness = ds['thickness']
 bed = ds['bed']
 errbed = ds['errbed'] 
 
-
 # START of monte carlo approach/loop
 # alter the bed 
 
