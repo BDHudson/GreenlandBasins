@@ -10,7 +10,7 @@ import numpy as np
 import time
 import datetime
 import mpl_toolkits.basemap.pyproj as pyproj
-
+import dask.array as da
 import archook #The module which locates arcgis
 archook.get_arcpy()
 import arcpy # Hopefully will cut out ArcPy out of this at a later date
@@ -82,17 +82,17 @@ mask_tiff_ALL = 'Y:\\Documents\\DATA\\MORLIGHEM_NSIDC\\mask_Layer.tif'
 
 # clip to the region you care about, and work with temporary Tiffs from here
 
-# TURN INTO NUMPY Arrays
-surface_numpy = arcpy.RasterToNumPyArray(surface_tiff_ALL)
-bed_numpy = arcpy.RasterToNumPyArray(bed_tiff_ALL)
-errbed_numpy = arcpy.RasterToNumPyArray(errbed_tiff_ALL)
+# TURN INTO NUMPY - Dask Arrays
+surface_numpy = da.from_array(arcpy.RasterToNumPyArray(surface_tiff_ALL),chunks=(1000,1000))
+bed_numpy = da.from_array(arcpy.RasterToNumPyArray(bed_tiff_ALL),chunks=(1000,1000))
+errbed_numpy = da.from_array(arcpy.RasterToNumPyArray(errbed_tiff_ALL),chunks=(1000,1000))
 mask_numpy = arcpy.RasterToNumPyArray(mask_tiff_ALL,nodata_to_value=0)
-
 
 # for masked array 0 is ocean, 1 is land 2 is ice. tell it if want ice, land + ice, etc. 
 # all values that are ice or land set to one
 mask_numpy[mask_numpy >= 1] = 1
 
+mask_numpy = da.from_array(mask_numpy,chunks=(1000,1000))
 
 # Tell it some info about the file strucutre/namiming convetion you want.
 
@@ -198,11 +198,14 @@ for i in xrange(1):
     # now calculate hydro potential 
     hydroPot = iceSurface + (.1 * newBed)
     
+    hydroPot.compute()
+    
+    out = np.array(hydroPot)
     #plt.imshow(newBed, vmin=-2000,vmax=2500)
     #plt.show()
     
     # take numpy array to TauDEM suited tif
-    numpyGeoTiff(hydroPot,fileProcessingFolder,filePrefix,surface_tiff_ALL)
+    numpyGeoTiff(out,fileProcessingFolder,filePrefix,surface_tiff_ALL)
     
     # calculate basins
     TauDEM_basins(fileProcessingFolder,filePrefix)
