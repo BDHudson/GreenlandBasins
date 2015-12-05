@@ -90,7 +90,16 @@ mask_numpy = arcpy.RasterToNumPyArray(mask_tiff_ALL,nodata_to_value=0)
 
 # for masked array 0 is ocean, 1 is land 2 is ice. tell it if want ice, land + ice, etc. 
 # all values that are ice or land set to one
+#Set floating ice tounges to zero
+mask_numpy[mask_numpy == 3] = 0
+#then consider land and ice
 mask_numpy[mask_numpy >= 1] = 1
+
+# currently set not equal glacier is 0
+#mask_numpy[mask_numpy != 2] = 0
+# equal glacier is 1
+# ONLY ROUTING WATER ON GLACIER
+#mask_numpy[mask_numpy == 1] = 1
 
 mask_numpy = da.from_array(mask_numpy,chunks=(1000,1000))
 
