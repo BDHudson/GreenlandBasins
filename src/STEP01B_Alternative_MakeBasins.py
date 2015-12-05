@@ -5,7 +5,7 @@ Created on Fri Feb 20 09:36:22 2015
 @author: Ben Hudson
 """
 #IMPORT PYTHON PACKAGES/ ARCGIS TOOLBOXES
-import pylab as plt
+#import pylab as plt
 import numpy as np
 import time
 import datetime
@@ -191,7 +191,7 @@ def TauDEM_basins(fileProcessingFolder,filePrefix):
     arcpy.Delete_management(fileProcessingFolder+filePrefix+"_Reclass.tif")
     
 
-for i in xrange(1):
+for i in xrange(100):
 
     print i
     
