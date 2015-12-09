@@ -15,6 +15,90 @@ import archook #The module which locates arcgis
 archook.get_arcpy()
 import arcpy # Hopefully will cut out ArcPy out of this at a later date
 
+import rasterio
+
+# IMPORT FUNCTIONS
+
+def geoTiffNumpy(tiffFile):
+    import rasterio
+    
+    with rasterio.open(tiffFile) as r:
+        ar = r.read(1)
+    
+    return ar
+
+def alterBedDEM(bed_numpy,errbed_numpy):
+    
+    #loading may not be the correct term 
+    # uniform distrubution is maybe too agressive, see what Morgleghem says in paper    
+    randomErrorLoading = np.random.uniform(-1.0,1.0,np.shape(errbed_numpy))
+    
+    #triangle distribution
+    #randomErrorLoading = np.random.triangular(-1.0,0,1.0,np.shape(errbed_numpy))
+    
+    #multiply randomErrorLoading, by the error bed
+    changeBedBy = randomErrorLoading * errbed_numpy
+    
+    # apply the error to alter the bed topography 
+    newBed = bed_numpy + changeBedBy
+
+    #change no data values back, they were randomly perturbed also    
+    #newBed[bed_numpy == -9999] = -9999
+    return newBed
+    
+def numpyGeoTiff(numpyarray,fileProcessingFolder,filePrefix,originalTiff):
+    
+    arcpy.env.overwriteOutput = True
+
+    # get info about the raster
+    r = arcpy.Raster(originalTiff)
+    LL_corner_subset = r.extent.lowerLeft
+    x_cell_size = r.meanCellWidth
+    y_cell_size = r.meanCellHeight
+    stringSpatialRef = r.spatialReference.exporttostring()
+    
+    # DUMP TO GEOTIFF
+    
+    outRaster1 = arcpy.NumPyArrayToRaster(numpyarray,LL_corner_subset,x_cell_size,y_cell_size,value_to_nodata=0)
+    arcpy.DefineProjection_management(outRaster1,stringSpatialRef)    
+    
+    arcpy.RasterToOtherFormat_conversion(outRaster1,fileProcessingFolder,"TIFF")
+    
+    outRaster1.save(fileProcessingFolder+filePrefix+"DEM.tif")
+
+def TauDEM_basins(fileProcessingFolder,filePrefix):
+    
+    arcpy.CheckOutExtension("Spatial")
+    
+    # StEP 1 - fill pits 
+    arcpy.PitRemove(fileProcessingFolder+filePrefix+"DEM.tif",
+                    "8",
+                    fileProcessingFolder+filePrefix+"pitlessDEM.tif")   
+    
+    # STEP 2 - D8 FLOW DIRECTIONS 
+    arcpy.D8FlowDir(fileProcessingFolder+filePrefix+"pitlessDEM.tif",
+                    "8",
+                    fileProcessingFolder+filePrefix+"p.tif",
+                    fileProcessingFolder+filePrefix+"sd8.tif")
+    
+    #STEP 3 - Convert TauDEM directions to Arc directions 
+    arcpy.gp.Reclassify_sa(fileProcessingFolder+filePrefix+"p.tif",
+                           "Value",
+                           "1 1;2 128;3 64;4 32;5 16;6 8;7 4;8 2",
+                           fileProcessingFolder+filePrefix+"_Reclass.tif",
+                           "DATA")
+    
+    #STEP 4 - Use arcpy to find basins. 
+    arcpy.gp.Basin_sa(fileProcessingFolder+filePrefix+"_Reclass.tif",fileProcessingFolder+filePrefix+"_basin.tif")
+    
+    # Step 5 - Delete the files you made except for basin. 
+    arcpy.Delete_management(fileProcessingFolder+filePrefix+"DEM.tif")
+    arcpy.Delete_management(fileProcessingFolder+filePrefix+"pitlessDEM.tif")
+    arcpy.Delete_management(fileProcessingFolder+filePrefix+"p.tif")
+    arcpy.Delete_management(fileProcessingFolder+filePrefix+"sd8.tif")
+    arcpy.Delete_management(fileProcessingFolder+filePrefix+"_Reclass.tif")
+    
+
 # projection information
 #NSIDC Sea Ice Polar Stereographic North
 PS_north = pyproj.Proj("+init=EPSG:3413")
@@ -83,10 +167,10 @@ mask_tiff_ALL = 'Y:\\Documents\\DATA\\MORLIGHEM_NSIDC\\mask_Layer.tif'
 # clip to the region you care about, and work with temporary Tiffs from here
 
 # TURN INTO NUMPY - Dask Arrays
-surface_numpy = da.from_array(arcpy.RasterToNumPyArray(surface_tiff_ALL),chunks=(1000,1000))
-bed_numpy = da.from_array(arcpy.RasterToNumPyArray(bed_tiff_ALL),chunks=(1000,1000))
-errbed_numpy = da.from_array(arcpy.RasterToNumPyArray(errbed_tiff_ALL),chunks=(1000,1000))
-mask_numpy = arcpy.RasterToNumPyArray(mask_tiff_ALL,nodata_to_value=0)
+surface_numpy = da.from_array(geoTiffNumpy(surface_tiff_ALL),chunks=(1000,1000))
+bed_numpy = da.from_array(geoTiffNumpy(bed_tiff_ALL),chunks=(1000,1000))
+errbed_numpy = da.from_array(geoTiffNumpy(errbed_tiff_ALL),chunks=(1000,1000))
+mask_numpy = geoTiffNumpy(mask_tiff_ALL)
 
 # for masked array 0 is ocean, 1 is land 2 is ice. tell it if want ice, land + ice, etc. 
 # all values that are ice or land set to one
@@ -118,78 +202,7 @@ iceBed = bed_numpy *  mask_numpy
 iceErrBed = errbed_numpy * mask_numpy
 
 
-def alterBedDEM(bed_numpy,errbed_numpy):
-    
-    #loading may not be the correct term 
-    # uniform distrubution is maybe too agressive, see what Morgleghem says in paper    
-    randomErrorLoading = np.random.uniform(-1.0,1.0,np.shape(errbed_numpy))
-    
-    #triangle distribution
-    #randomErrorLoading = np.random.triangular(-1.0,0,1.0,np.shape(errbed_numpy))
-    
-    #multiply randomErrorLoading, by the error bed
-    changeBedBy = randomErrorLoading * errbed_numpy
-    
-    # apply the error to alter the bed topography 
-    newBed = bed_numpy + changeBedBy
 
-    #change no data values back, they were randomly perturbed also    
-    #newBed[bed_numpy == -9999] = -9999
-    return newBed
-    
-def numpyGeoTiff(numpyarray,fileProcessingFolder,filePrefix,originalTiff):
-    
-    arcpy.env.overwriteOutput = True
-
-    # get info about the raster
-    r = arcpy.Raster(originalTiff)
-    LL_corner_subset = r.extent.lowerLeft
-    x_cell_size = r.meanCellWidth
-    y_cell_size = r.meanCellHeight
-    stringSpatialRef = r.spatialReference.exporttostring()
-    
-    # DUMP TO GEOTIFF
-    
-    outRaster1 = arcpy.NumPyArrayToRaster(numpyarray,LL_corner_subset,x_cell_size,y_cell_size,value_to_nodata=0)
-    arcpy.DefineProjection_management(outRaster1,stringSpatialRef)    
-    
-    arcpy.RasterToOtherFormat_conversion(outRaster1,fileProcessingFolder,"TIFF")
-    
-    outRaster1.save(fileProcessingFolder+filePrefix+"DEM.tif")
-
-def TauDEM_basins(fileProcessingFolder,filePrefix):
-    
-    arcpy.CheckOutExtension("Spatial")
-    
-    # StEP 1 - fill pits 
-    arcpy.PitRemove(fileProcessingFolder+filePrefix+"DEM.tif",
-                    "8",
-                    fileProcessingFolder+filePrefix+"pitlessDEM.tif")   
-    
-    # STEP 2 - D8 FLOW DIRECTIONS 
-    arcpy.D8FlowDir(fileProcessingFolder+filePrefix+"pitlessDEM.tif",
-                    "8",
-                    fileProcessingFolder+filePrefix+"p.tif",
-                    fileProcessingFolder+filePrefix+"sd8.tif")
-    
-    #STEP 3 - Convert TauDEM directions to Arc directions 
-    arcpy.gp.Reclassify_sa(fileProcessingFolder+filePrefix+"p.tif",
-                           "Value",
-                           "1 1;2 128;3 64;4 32;5 16;6 8;7 4;8 2",
-                           fileProcessingFolder+filePrefix+"_Reclass.tif",
-                           "DATA")
-    
-    #STEP 4 - Use arcpy to find basins. 
-    arcpy.gp.Basin_sa(fileProcessingFolder+filePrefix+"_Reclass.tif",
-                      fileProcessingFolder+filePrefix+"_basin.tif")
-    
-    # Step 5 - Delete the files you made except for basin. 
-    arcpy.Delete_management(fileProcessingFolder+filePrefix+"DEM.tif")
-    arcpy.Delete_management(fileProcessingFolder+filePrefix+"pitlessDEM.tif")
-    arcpy.Delete_management(fileProcessingFolder+filePrefix+"p.tif")
-    arcpy.Delete_management(fileProcessingFolder+filePrefix+"sd8.tif")
-    arcpy.Delete_management(fileProcessingFolder+filePrefix+"_Reclass.tif")
-    
 
 for i in xrange(100):
 
