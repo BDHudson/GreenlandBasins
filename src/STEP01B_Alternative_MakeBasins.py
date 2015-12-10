@@ -19,14 +19,32 @@ import rasterio
 
 # IMPORT FUNCTIONS
 
-def geoTiffNumpy(tiffFile):
-    import rasterio
+def geoTiffNumpy(tiffFile): 
     
     with rasterio.open(tiffFile) as r:
         ar = r.read(1)
     
     return ar
+    
+def geoTiffNumpy2(tiffFile): 
+    
+    with rasterio.open(tiffFile,nodata=0) as r:
+        ar = r.read(1)
+    
+    return ar
 
+def numpyGeoTiff(numpyarray,fileProcessingFolder,filePrefix,originalTiff):
+    
+    # open the original geotiff 
+    r = rasterio.open(originalTiff)
+    # get its profile info    
+    profile = r.profile
+    
+    with rasterio.open(fileProcessingFolder+filePrefix+".tif", 'w', **profile) as dst:
+        dst.write(numpyarray, 1)
+    
+    return profile
+    
 def alterBedDEM(bed_numpy,errbed_numpy):
     
     #loading may not be the correct term 
@@ -46,25 +64,25 @@ def alterBedDEM(bed_numpy,errbed_numpy):
     #newBed[bed_numpy == -9999] = -9999
     return newBed
     
-def numpyGeoTiff(numpyarray,fileProcessingFolder,filePrefix,originalTiff):
-    
-    arcpy.env.overwriteOutput = True
-
-    # get info about the raster
-    r = arcpy.Raster(originalTiff)
-    LL_corner_subset = r.extent.lowerLeft
-    x_cell_size = r.meanCellWidth
-    y_cell_size = r.meanCellHeight
-    stringSpatialRef = r.spatialReference.exporttostring()
-    
-    # DUMP TO GEOTIFF
-    
-    outRaster1 = arcpy.NumPyArrayToRaster(numpyarray,LL_corner_subset,x_cell_size,y_cell_size,value_to_nodata=0)
-    arcpy.DefineProjection_management(outRaster1,stringSpatialRef)    
-    
-    arcpy.RasterToOtherFormat_conversion(outRaster1,fileProcessingFolder,"TIFF")
-    
-    outRaster1.save(fileProcessingFolder+filePrefix+"DEM.tif")
+#def numpyGeoTiff(numpyarray,fileProcessingFolder,filePrefix,originalTiff):
+#    
+#    arcpy.env.overwriteOutput = True
+#
+#    # get info about the raster
+#    r = arcpy.Raster(originalTiff)
+#    LL_corner_subset = r.extent.lowerLeft
+#    x_cell_size = r.meanCellWidth
+#    y_cell_size = r.meanCellHeight
+#    stringSpatialRef = r.spatialReference.exporttostring()
+#    
+#    # DUMP TO GEOTIFF
+#    
+#    outRaster1 = arcpy.NumPyArrayToRaster(numpyarray,LL_corner_subset,x_cell_size,y_cell_size,value_to_nodata=0)
+#    arcpy.DefineProjection_management(outRaster1,stringSpatialRef)    
+#    
+#    arcpy.RasterToOtherFormat_conversion(outRaster1,fileProcessingFolder,"TIFF")
+#    
+#    outRaster1.save(fileProcessingFolder+filePrefix+"DEM.tif")
 
 def TauDEM_basins(fileProcessingFolder,filePrefix):
     
@@ -170,7 +188,7 @@ mask_tiff_ALL = 'Y:\\Documents\\DATA\\MORLIGHEM_NSIDC\\mask_Layer.tif'
 surface_numpy = da.from_array(geoTiffNumpy(surface_tiff_ALL),chunks=(1000,1000))
 bed_numpy = da.from_array(geoTiffNumpy(bed_tiff_ALL),chunks=(1000,1000))
 errbed_numpy = da.from_array(geoTiffNumpy(errbed_tiff_ALL),chunks=(1000,1000))
-mask_numpy = geoTiffNumpy(mask_tiff_ALL)
+mask_numpy = geoTiffNumpy2(mask_tiff_ALL)
 
 # for masked array 0 is ocean, 1 is land 2 is ice. tell it if want ice, land + ice, etc. 
 # all values that are ice or land set to one
@@ -185,6 +203,7 @@ mask_numpy[mask_numpy >= 1] = 1
 # ONLY ROUTING WATER ON GLACIER
 #mask_numpy[mask_numpy == 1] = 1
 
+# p = numpyGeoTiff(mask_numpy,fileProcessingFolder,filePrefix+"test",surface_tiff_ALL)
 mask_numpy = da.from_array(mask_numpy,chunks=(1000,1000))
 
 # Tell it some info about the file strucutre/namiming convetion you want.
@@ -229,6 +248,7 @@ for i in xrange(100):
     # take numpy array to TauDEM suited tif
     numpyGeoTiff(out,fileProcessingFolder,filePrefix,surface_tiff_ALL)
     
+    dfghdfg
     # calculate basins
     TauDEM_basins(fileProcessingFolder,filePrefix)
     
